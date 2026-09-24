@@ -136,6 +136,15 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  examples/custom-api:
+    devDependencies:
+      emulate:
+        specifier: workspace:*
+        version: link:../../packages/emulate
+      typescript:
+        specifier: ^5.7
+        version: 5.9.3
+
   examples/nextjs-embedded:
     dependencies:
       '@base-ui/react':

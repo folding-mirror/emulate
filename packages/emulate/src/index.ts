@@ -1,8 +1,9 @@
 import { Command } from "commander";
-import { startCommand } from "./commands/start.js";
 import { initCommand } from "./commands/init.js";
 import { listCommand } from "./commands/list.js";
 import { SERVICE_NAMES } from "./registry.js";
+import { projectStartCommand } from "./commands/project-start.js";
+import { scaffoldCommand } from "./commands/scaffold.js";
 
 declare const PKG_VERSION: string;
 const pkg = { version: PKG_VERSION };
@@ -21,6 +22,29 @@ program
 Framework adapters:
   Embed emulators in app routes with @emulators/adapter-next or @emulators/adapter-nuxt.
   Docs: https://emulate.dev/docs/nextjs and https://emulate.dev/docs/nuxt
+
+Custom stateful HTTP APIs:
+  Run 'npx emulate init --custom inventory' to create a typed API, config, and runnable test.
+  Existing YAML, JSON, TypeScript, and JavaScript configs get a service entry when supported.
+  For unusual executable configs, init prints the import and service entry to add manually.
+  Init prints the test command; use the service URL and Inspector link printed by start for requests.
+  Run 'npx emulate start --watch' to reload local modules and inspect requests at /_emulate.
+  Creating a missing local import retries a failed reload, including outside the config directory.
+  Import defineEmulator, defineConfig, and createEmulator from 'emulate'.
+  Test in process with createEmulator({ service: yourDefinition, listen: false }).
+  Custom APIs support seeds, reset, snapshots, restore, and opt-in persistence.
+  Streamed responses persist state changes during delivery; reset and close cancel active streams before cleanup.
+  Appended Set-Cookie headers retain cookies already on a response.
+  Config accepts local TypeScript/JavaScript files and installed packages alongside built-ins.
+  Node loads TypeScript with tsconfig aliases and source maps; no extra runtime packages are needed.
+  Node 26 requires erasable TypeScript; compile enums and parameter properties to JavaScript first.
+  Node 24 also supports native TypeScript transforms.
+  Successful watch reloads reset the run to seed; auto-detected config files created later also trigger reloads.
+  Reload errors keep the previous runner when possible.
+  Structured inspection redacts token and secret fields, including access_token and client_secret.
+  Framework adapters keep root-relative custom redirects under the service mount.
+  Export OPTIONS from the Next.js handler to forward preflight and custom OPTIONS routes.
+  Docs: https://emulate.dev/docs/custom-apis
 
 GitHub API coverage:
   Includes repository contents, raw downloads, raw media negotiation for file Contents and README responses,
@@ -86,6 +110,8 @@ program
   .option("-p, --port <port>", "Base port", defaultPort)
   .option("-s, --service <services>", "Comma-separated services to enable")
   .option("--seed <file>", "Path to seed config file")
+  .option("--config <file>", "Path to TypeScript, JavaScript, YAML, or JSON configuration")
+  .option("--watch", "Watch imports and fixtures; successful reloads reset state to seed")
   .option("--base-url <url>", "Override advertised base URL (supports {service} template)")
   .option("--portless", "Serve over HTTPS via portless (auto-registers aliases)")
   .option(
@@ -102,16 +128,14 @@ program
       port,
       service: opts.service,
       seed: opts.seed,
+      config: opts.config,
+      watch: opts.watch,
       baseUrl: opts.baseUrl,
       portless: opts.portless,
       generatedSecretsFile: opts.generatedSecretsFile,
     };
-    if (!opts.generatedSecretsFile) {
-      await startCommand(options);
-      return;
-    }
     try {
-      await startCommand(options);
+      await projectStartCommand(options);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
@@ -122,16 +146,30 @@ program
   .command("init")
   .description("Generate a starter config file")
   .option("-s, --service <service>", "Service to generate config for", "all")
+  .option("--custom <name>", "Scaffold a custom stateful API, config, and test")
+  .option("--config <file>", "Existing configuration to update when scaffolding a custom API")
   .action((opts) => {
-    initCommand({ service: opts.service });
+    try {
+      if (opts.custom) scaffoldCommand(opts.custom, opts.config);
+      else initCommand({ service: opts.service });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    }
   });
 
 program
   .command("list")
   .alias("list-services")
   .description("List available services")
-  .action(() => {
-    listCommand();
+  .option("--config <file>", "Configuration containing custom services")
+  .action(async (opts) => {
+    try {
+      await listCommand(opts.config);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    }
   });
 
 program.parse();

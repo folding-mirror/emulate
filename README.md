@@ -38,6 +38,49 @@ Slack event callbacks use `X-Slack-Request-Timestamp` and `X-Slack-Signature` wh
 
 Resend `POST /emails` and `POST /emails/batch` support 24-hour `Idempotency-Key` replay, returning the original email IDs without duplicate emails or webhooks.
 
+## Custom stateful HTTP APIs
+
+Write your own API in a typed module and use it in the CLI, tests, and framework adapters:
+
+```bash
+npm install -D emulate
+npx emulate init --custom inventory
+npx emulate start --watch
+```
+
+The scaffold implements reservations, stock changes, cancellation, and out-of-stock errors. It creates a runnable Node test and adds the service to a discovered YAML, JSON, TypeScript, or JavaScript config. For an unusual executable config, it prints the import and service entry to add manually. `init` prints the test command and directs you to the service URL and Inspector link printed by `start`; the port depends on the config. Watch mode retries when a missing local import is created, including outside the config directory. Use the inspector to view requests and state or reset to the initial seed. Structured inspection redacts token and secret fields such as `access_token`, `refresh_token`, and `client_secret`.
+
+```typescript
+import { defineEmulator, createEmulator } from 'emulate'
+
+const counter = defineEmulator({
+  name: 'counter',
+  state: () => ({ count: 0 }),
+  setup({ app, state }) {
+    app.get('/count', (c) => c.json(state))
+    app.post('/increment', (c) => c.json({ count: ++state.count }))
+  },
+})
+
+const api = await createEmulator({ service: counter, listen: false })
+try {
+  await api.request('/increment', { method: 'POST' })
+  const checkpoint = api.snapshot()
+  await api.reset()
+  await api.restore(checkpoint)
+} finally {
+  await api.close()
+}
+```
+
+Use `defineConfig({ services: { inventory: { emulator: inventory }, github: { emulator: 'github' } } })` in `emulate.config.ts`. YAML/JSON entries accept local module paths and installed packages. `--config` selects a config explicitly; legacy flat configs and `--seed` remain supported. Node loads local TypeScript with path aliases and source locations without additional runtime dependencies. Node 26 supports erasable TypeScript only; compile enums and parameter properties to JavaScript before loading them. Node 24 also supports native TypeScript transforms.
+
+Custom state uses your own record shapes and IDs. Seeds replace the complete initial state. Reset restores the captured seed; successful watch reloads create a new baseline and reset the run. With config auto-discovery, watch mode also detects recognized config files created after startup. Instances are independent. Persistence is opt-in, with versioned snapshots and no cross-process locking. Use `port: 0` for HTTP tests, or `listen: false` to test without opening a port. Custom reset and close are awaitable. Framework adapters keep root-relative custom redirects under the service mount while preserving custom HTML bodies.
+
+Streamed responses persist state changes when their bodies finish or are canceled. Reset and close cancel active streams before running cleanup. `c.header('Set-Cookie', value, { append: true })` retains cookies already set on the response. In a Next.js route, export `OPTIONS` from `createEmulateHandler` to forward preflight requests and custom OPTIONS handlers.
+
+See the [custom API guide](https://emulate.dev/docs/custom-apis) and [complete inventory example](examples/custom-api) for validation, middleware, persistence, adapters, package sharing, and troubleshooting.
+
 ## CLI
 
 ```bash
